@@ -3,6 +3,7 @@ using RabbitMQ.Client.Events;
 using System;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Subscriber
 {
@@ -10,39 +11,49 @@ namespace Subscriber
     {
         static void Main(string[] args)
         {
-            Console.Write("Press [enter] to continue...");
+            Console.Write("Press [enter] to start receiving messages.");
             Console.ReadLine();
             Console.Clear();
-            var factory = new ConnectionFactory() { HostName = "localhost" };
+            var factory = new ConnectionFactory { HostName = "localhost" };
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.QueueDeclare(queue: "task_queue",
+                channel.QueueDeclare(queue: "worker_queue",
                                      durable: true,
                                      exclusive: false,
                                      autoDelete: false,
                                      arguments: null);
 
-                channel.BasicQos(prefetchSize: 0, prefetchCount: 6, global: false);
+                channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
 
                 var consumer = new EventingBasicConsumer(channel);
 
                 var messagesReceived = 0;
                 consumer.Received += (sender, ea) =>
                 {
-                    var body = ea.Body;
-                    var message = Encoding.UTF8.GetString(body.ToArray());
-                    // Note: it is possible to access the channel via
-                    //       ((EventingBasicConsumer)sender).Model here
-                    channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
-                    Console.WriteLine($"Messages received: {++messagesReceived}");
-                    Console.SetCursorPosition(0, Console.CursorTop - 1);
-                    Thread.Sleep(500);
+                    try
+                    {
+                        var body = ea.Body;
+                        var message = Encoding.UTF8.GetString(body.ToArray());
+                        var y = Console.CursorTop == 1 ? 2 : Console.CursorTop;
+                        Console.SetCursorPosition(0, 1);
+                        Console.WriteLine($"Messages received: {++messagesReceived}");
+                        Console.SetCursorPosition(0, y);
+                        Task.Run(() =>
+                        {
+                            Thread.Sleep(2000); //mocking some async action
+                            Console.WriteLine($"Message: {message}. Thread #{Thread.CurrentThread.ManagedThreadId}.");
+                        });
+                        channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
                 };
-                channel.BasicConsume(queue: "task_queue",
+                channel.BasicConsume(queue: "worker_queue",
                                      autoAck: false,
                                      consumer: consumer);
-                Console.WriteLine(" Press [enter] to exit.");
                 Console.ReadLine();
             }
         }
